@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Dependencies and local configuration
+node_modules/
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Business files and generated delivery packages
+private-data/
+*.sku-kit.json
+*.zip
