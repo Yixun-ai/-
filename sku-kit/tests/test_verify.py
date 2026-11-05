@@ -50,7 +50,13 @@ def rewrite(payload, changes=None, remove=(), append=()):
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', UserWarning)
             for name, data in append:
-                output.writestr(name, data)
+                # ZipInfo(name) normalizes backslashes on Windows. Set the raw
+                # name after construction so hostile ZIP bytes stay hostile on
+                # every host, in both the local header and central directory.
+                entry = zipfile.ZipInfo()
+                entry.filename = entry.orig_filename = name
+                entry.compress_type = zipfile.ZIP_DEFLATED
+                output.writestr(entry, data)
     return result.getvalue()
 
 
@@ -137,7 +143,23 @@ class VerificationTests(unittest.TestCase):
     def test_path_traversal_and_windows_unsafe_names_rejected(self):
         for name in ('../escape.txt', '/absolute.txt', 'C:/escape.txt', 'products/../escape.png',
                      'products\\001.png', 'products//001.png', 'products/./001.png', 'products/CON'):
-            self.rejected(rewrite(self.payload, append=[(name, b'bad')]), 'UNSAFE_PATH')
+            with self.subTest(name=name):
+                payload = rewrite(self.payload, append=[(name, b'bad')])
+                self.assertGreaterEqual(payload.count(name.encode('utf-8')), 2)
+                self.rejected(payload, 'UNSAFE_PATH')
+
+    def test_raw_backslash_fixture_survives_windows_zipinfo_normalization(self):
+        name = 'products\\001.png'
+        original_init = zipfile.ZipInfo.__init__
+        def windows_init(entry, filename='NoName', date_time=(1980, 1, 1, 0, 0, 0)):
+            original_init(entry, filename, date_time)
+            entry.filename = entry.filename.replace('\\', '/')
+        # Model only ZipInfo's Windows normalization, without changing os.sep
+        # or any Path behavior in the running test process.
+        with patch.object(zipfile.ZipInfo, '__init__', windows_init):
+            payload = rewrite(self.payload, append=[(name, b'bad')])
+            self.assertGreaterEqual(payload.count(name.encode('utf-8')), 2)
+            self.rejected(payload, 'UNSAFE_PATH')
 
     def test_symbolic_link_zip_entry(self):
         stream = io.BytesIO()
