@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SKU Kit · 商品资料</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<header class="topbar"><span class="wordmark">sku<span class="wordmark-dot">.</span>kit</span><span class="topbar-label">商品资料</span><div class="project-actions"><span id="draftStatus">在本机整理</span><button id="openProject" type="button">打开进度</button><button id="saveProject" type="button" disabled>保存进度</button><input id="projectInput" type="file" accept=".json" hidden></div></header>
+<main>
+<div class="page-heading"><div><p class="eyebrow">资料整理 / 新的一批</p><h1>把这批资料整理好。</h1><p class="lead">先对上产品和图片，再把遗漏找出来。</p></div><span class="page-note">原文件保留<br>整理结果另存</span></div>
+<div class="layout">
+<form id="form" novalidate>
+<section class="form-section"><div class="section-heading"><span class="section-number">01</span><h2>这一批资料</h2></div>
+<div class="file-row"><label for="table">产品表<small>CSV 或 XLSX，首行是列名</small></label><div class="file-control"><input id="table" type="file" accept=".csv,.xlsx"><span id="tableMeta" class="file-meta">还没有选择</span></div></div>
+<div class="file-row"><label for="images">图片文件夹<small>包含里面的子文件夹</small></label><div class="file-control"><input id="images" type="file" webkitdirectory multiple><span id="imageMeta" class="file-meta">还没有选择</span></div></div>
+<p id="selected" class="selection-note">一次处理最多 50 MB 的资料。</p>
+</section>
+<section class="form-section"><div class="section-heading"><span class="section-number">02</span><h2>怎么对应</h2></div>
+<div class="field-pair"><label>产品编号在哪一列<input id="column" type="text" placeholder="自动识别 SKU、货号等列名"><small>多个编号列时，填入准确列名。</small></label><label>图片文件怎么命名<select id="mode"><option value="exact">文件名就是产品编号</option><option value="suffix">编号后还有主图、细节等后缀</option></select><small id="matchExample">例如：001.png 对应产品 001</small></label></div>
+<details class="extra-options"><summary>工作表、尺寸和大小写</summary><div class="options"><label>工作表名称<input id="sheet" placeholder="有多张工作表时填写"></label><div class="size-fields"><label>最小宽度 / px<input id="width" type="number" min="0" max="20000" value="0"></label><label>最小高度 / px<input id="height" type="number" min="0" max="20000" value="0"></label></div><label>重复编号怎么处理<select id="duplicates"><option value="error">作为错误，先修正编号</option><option value="repeat_rows">同一商品的多条记录</option></select><small>名称不同的重复编号仍需修正。</small></label><label class="inline"><input id="ignoreCase" type="checkbox">编号不区分大小写</label></div></details>
+<div class="check-action"><button id="check" type="submit" class="primary">检查这批资料</button><span>图片有多个可能编号时，会留给你确认。</span></div>
+</section>
+</form>
+<aside class="delivery"><div class="delivery-heading"><span class="section-number">04</span><h2>准备交付</h2></div>
+<dl class="batch-summary"><div><dt>产品记录</dt><dd id="productCount">—</dd></div><div><dt>对应图片</dt><dd id="matchedCount">—</dd></div><div><dt>需要处理</dt><dd id="problemCount">—</dd></div></dl>
+<div id="status" role="status" aria-live="polite">选好资料后，先检查一次。</div>
+<label id="warningRow" class="inline warning-ack" hidden><input id="allow" type="checkbox">我已查看提醒，按当前结果打包。</label>
+<button id="pack" type="button" class="export-button" disabled>下载整理好的资料包 <span aria-hidden="true">↓</span></button>
+<p class="pack-note" id="packNote">检查完成后，这里可以下载。</p>
+<p class="progress-note">保存进度会下载原表、图片和确认记录。之后打开进度文件，就能接着整理。</p><div class="package-contents"><h3>资料包里有什么</h3><ul><li>按产品编号分好的图片</li><li>一份原始产品表</li><li>问题记录和文件对应清单</li></ul><p>未匹配的图片会单独存放。</p></div>
+</aside>
+</div>
+<section id="results" class="results" hidden>
+<div class="result-heading"><div class="section-heading"><span class="section-number">03</span><h2 id="resultTitle">核对这一批</h2></div><span id="resultCaption"></span></div>
+<div class="result-tabs" role="tablist" aria-label="核对方式"><button type="button" role="tab" aria-selected="true" aria-controls="issuePane" id="issuesTab">问题与提醒</button><button type="button" role="tab" aria-selected="false" aria-controls="reviewPane" id="reviewTab">看图核对</button><button id="checklist" type="button" class="checklist-button" disabled>下载补件清单</button></div>
+<section id="issuePane" role="tabpanel" aria-labelledby="issuesTab"><p id="issueCaption" class="table-caption"></p><div class="scroll"><table class="issue-table"><thead><tr><th>问题</th><th>位置</th><th>说明</th><th>处理</th></tr></thead><tbody id="issues"></tbody></table></div></section>
+<section id="reviewPane" role="tabpanel" aria-labelledby="reviewTab" hidden>
+<div id="reviewToolbar" class="review-toolbar"><label>查找产品或图片<input id="reviewSearch" type="search" placeholder="编号、名称或文件名"></label><label>显示范围<select id="reviewFilter"><option value="all">全部资料</option><option value="needs">需要核对</option><option value="manual">已人工确认</option></select></label><button id="appendButton" type="button">补选 / 替换图片</button><input type="file" id="appendImages" accept="image/*" multiple hidden></div>
+<div class="scroll review-scroll"><table class="review-table"><thead><tr><th>图片</th><th>文件</th><th>对应商品</th><th>处理</th></tr></thead><tbody id="reviewRows"></tbody></table></div>
+<div class="pagination"><span id="pageLabel"></span><button id="previous" type="button">上一页</button><button id="next" type="button">下一页</button></div>
+</section>
+<details class="technical"><summary>查看完整检查记录</summary><pre id="json"></pre></details></section>
+<dialog id="assignDialog" aria-labelledby="assignmentTitle"><div class="dialog-heading"><h2 id="assignmentTitle">确认这张图属于哪个产品</h2><button id="cancelAssignment" type="button">关闭</button></div><div id="assignmentPreview" class="assignment-preview"></div><p id="assignmentPath" class="assignment-path"></p><p id="assignmentContext" class="assignment-context"></p><label>产品编号<input id="assignmentSku" list="skuOptions" autocomplete="off" placeholder="选择或填写完整产品编号"></label><datalist id="skuOptions"></datalist><p id="assignmentError" class="assignment-error" role="status"></p><div class="dialog-actions"><button id="confirmAssignment" type="button" class="primary">确认归属</button><button id="unassign" type="button">暂不归类</button><button id="autoAssign" type="button">恢复按文件名匹配</button></div><p class="dialog-note">确认记录随资料包保存；原图和原表不改动。无法读取的图片需要补选替换。</p></dialog>
+<footer>检查文件是否齐全、能否读取。商品是否拍对，仍需你核对。</footer>
+</main><script type="module" src="/app.mjs"></script></body></html>
