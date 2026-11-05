@@ -10,9 +10,9 @@ import zipfile
 from pathlib import PurePosixPath
 from PIL import Image, UnidentifiedImageError
 
-from table_io import parse_table
+from table_io import parse_table, SKU_ALIASES
 
-VERSION = '0.3.0'
+VERSION = '0.4.0'
 EXTENSIONS = {'.png': 'PNG', '.jpg': 'JPEG', '.jpeg': 'JPEG', '.webp': 'WEBP',
               '.gif': 'GIF', '.bmp': 'BMP', '.avif': 'AVIF'}
 MAX_TOTAL = 240 * 1024 * 1024
@@ -25,8 +25,14 @@ def sha(data):
 def safe_name(value):
     value = unicodedata.normalize('NFC', value)
     value = re.sub(r'[\x00-\x1f\x7f<>:"/\\|?*]', '_', value).strip(' .')
-    # UTF-8-safe cap, leaves room for collision suffixes on common filesystems.
-    value = value.encode('utf-8')[:160].decode('utf-8', 'ignore') or '_unnamed'
+    # Keep ordinary file extensions readable when truncating long supplier names.
+    suffix = PurePosixPath(value).suffix
+    if 0 < len(suffix.encode('utf-8')) <= 16:
+        stem = value[:-len(suffix)]
+        stem = stem.encode('utf-8')[:160-len(suffix.encode('utf-8'))].decode('utf-8', 'ignore').rstrip(' .')
+        value = (stem or '_unnamed') + suffix
+    else:
+        value = value.encode('utf-8')[:160].decode('utf-8', 'ignore').rstrip(' .') or '_unnamed'
     if re.match(r'^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)', value, re.I):
         value = '_' + value
     return value
@@ -98,8 +104,7 @@ def analyze(table_name, table_bytes, images, sku_column=None, sheet=None,
     table_digest = sha(table_bytes)
     headers, rows = table['headers'], table['rows']
     if sku_column is None:
-        aliases = {'sku', '产品编号', '商品编号', '货号'}
-        candidates = [h for h in headers if h.strip().casefold() in aliases]
+        candidates = [h for h in headers if h.strip().casefold() in SKU_ALIASES]
         if len(candidates) != 1:
             raise ValueError('无法唯一确定 SKU 列，请指定 sku_column。可选：' + ', '.join(headers))
         sku_column = candidates[0]
@@ -281,7 +286,7 @@ def package(report, table, table_name, table_bytes, assets, allow_warnings=False
     entries['reports/manifest.json'] = json.dumps({'files': manifest, 'sku_folders': folders,
                                                  'manual_assignments': report.get('assignments', {})}, ensure_ascii=False, indent=2).encode()
     entries['reports/补件清单.csv'] = checklist(report)
-    entries['README.txt'] = ('SKU Kit v0.3\n原始图片及 source/ 中的原表按字节保留。\n'
+    entries['README.txt'] = ('SKU Kit v%s\n原始图片及 source/ 中的原表按字节保留。\n' % VERSION +
         'reports/manifest.json 提供原路径、目标路径和 SHA-256。\n'
         'unmatched/ 包含明确允许警告后导出的未匹配图片。\n'
         '不判断图片实际商品内容，不代表电商平台审核通过。\n').encode()

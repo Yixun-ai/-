@@ -8,6 +8,7 @@ from pathlib import Path
 
 from engine import VERSION, MAX_TOTAL, analyze, package, checklist
 from table_io import MAX_TABLE
+from verify import verify_package
 
 
 def load_inputs(table_path, images_path):
@@ -88,7 +89,9 @@ class JsonParser(argparse.ArgumentParser):
 
 
 def main():
-    parser = JsonParser(description='SKU Kit: check / pack; JSON output, no model API required.')
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='strict')
+    parser = JsonParser(description='SKU Kit: check / pack / checklist / verify; JSON output, no model API required.')
     parser.add_argument('--version', action='version', version=VERSION)
     sub = parser.add_subparsers(dest='command', required=True, parser_class=JsonParser)
     for command in ('check', 'pack', 'checklist'):
@@ -107,7 +110,13 @@ def main():
             child.add_argument('--output', required=True)
         if command == 'pack':
             child.add_argument('--allow-warnings', action='store_true')
+    verification = sub.add_parser('verify', help='核验已有交付 ZIP；不解压，不修改文件。')
+    verification.add_argument('--package', required=True)
     options = vars(parser.parse_args())
+    if options['command'] == 'verify':
+        report = verify_package(options['package'])
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return {'ok': 0, 'error': 2, 'invalid_input': 1}[report['status']]
     options['case_sensitive'] = not options.pop('ignore_case')
     try:
         report = run_paths(**options)

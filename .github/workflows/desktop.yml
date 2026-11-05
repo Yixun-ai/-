@@ -1,0 +1,125 @@
+name: Desktop build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'sku-kit/**'
+      - 'scripts/smoke_desktop.py'
+      - '.github/workflows/desktop.yml'
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'sku-kit/**'
+      - 'scripts/smoke_desktop.py'
+      - '.github/workflows/desktop.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and smoke test (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            label: windows-x64
+          - os: macos-15
+            label: macos-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Install build dependencies
+        run: python -m pip install "Pillow==11.3.0" "pyinstaller==6.22.3" "pyinstaller-hooks-contrib==2026.9"
+      - name: Test source
+        working-directory: sku-kit
+        run: python -m unittest discover -s tests -v
+      - name: Test browser project helpers
+        run: node --test sku-kit/tests/project.test.mjs
+      - name: Build self-contained distribution
+        run: python sku-kit/build_desktop.py --output build-desktop
+      - name: Smoke test packaged Windows executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $archive = (Get-ChildItem build-desktop/SKU-Kit-*.zip).FullName
+          python scripts/smoke_desktop.py --archive "$archive"
+      - name: Smoke test packaged macOS executable
+        if: runner.os == 'macOS'
+        run: python scripts/smoke_desktop.py --archive build-desktop/SKU-Kit-darwin-arm64.zip
+      - name: Keep tested distribution and checksum
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: SKU-Kit-${{ matrix.label }}
+          path: |
+            build-desktop/SKU-Kit-*.zip
+            build-desktop/SKU-Kit-*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish tested desktop preview
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download this run's tested distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: SKU-Kit-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify both distributions and checksums exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          test -f SKU-Kit-windows-amd64.zip
+          test -f SKU-Kit-windows-amd64.zip.sha256
+          test -f SKU-Kit-darwin-arm64.zip
+          test -f SKU-Kit-darwin-arm64.zip.sha256
+          sha256sum --check -- *.zip.sha256
+      - name: Publish a new preview without replacing previous releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="preview-${GITHUB_SHA:0:7}"
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          ## SKU Kit 桌面预览版
+
+          完整解压下载包后运行启动脚本，无需安装 Python。请按电脑系统选择：
+
+          - Windows 64 位 Intel/AMD：`SKU-Kit-windows-amd64.zip`，双击 `Start SKU Kit.bat`。
+          - macOS Apple Silicon（M 系列）：`SKU-Kit-darwin-arm64.zip`，双击 `Start SKU Kit.command`。此包不支持 Intel Mac。
+
+          两个平台分别在 Windows 2022 x64、macOS 15 ARM64 原生 GitHub runner 上构建，源码自动测试通过，并对最终 ZIP 解压后启动的可执行文件完成冒烟验证：页面资源、CSV 与 PNG 匹配检查、导出 ZIP 的原始图片和表格字节、缺图阻止导出、外部网页来源请求拦截。
+
+          这些结果说明基础流程在对应 runner 上通过，不代表已通过真人 Windows 测试或所有电脑兼容测试。此版本未商业代码签名，也未进行 macOS 公证；系统可能提示来源未知。请确认下载来自本仓库并核对附带的 `.sha256` 校验和，按照系统提供的打开方式处理，无需关闭整机安全设置。
+
+          使用期间保留终端窗口；按 Ctrl+C 停止。表格和图片由本机服务在内存中处理。预览版用于反馈和验证，尚未标为正式稳定版本。
+          NOTES
+          gh release create "$tag" release-assets/*.zip release-assets/*.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "SKU Kit 桌面预览版 ${GITHUB_SHA:0:7}" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" --draft --prerelease --latest=false
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false

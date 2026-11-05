@@ -7,6 +7,53 @@ import xml.etree.ElementTree as ET
 
 NS = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
 MAX_TABLE = 20 * 1024 * 1024
+SKU_ALIASES = frozenset(('sku', '产品编号', '商品编号', '货号'))
+
+
+def _open_xlsx(data):
+    if len(data) > MAX_TABLE:
+        raise ValueError('表格超过 20 MB，请拆分。')
+    book = zipfile.ZipFile(io.BytesIO(data))
+    infos = book.infolist()
+    if (len(infos) > 3000 or sum(x.file_size for x in infos) > 80 * 1024 * 1024
+            or len({x.filename for x in infos}) != len(infos)):
+        book.close()
+        raise ValueError('XLSX 内部文件重复或解压后超过限制，请拆分。')
+    return book
+
+
+def _xml(book, path):
+    raw = book.read(path)
+    if b'<!DOCTYPE' in raw.upper() or b'<!ENTITY' in raw.upper():
+        raise ValueError('不支持 XML 实体声明。')
+    return ET.fromstring(raw)
+
+
+def _sheet_definitions(book):
+    definitions = _xml(book, 'xl/workbook.xml').findall('s:sheets/s:sheet', NS)
+    names = [x.get('name') for x in definitions]
+    if not names or any(not isinstance(x, str) or not x.strip() for x in names):
+        raise ValueError('XLSX 没有有效的工作表。')
+    if len(set(names)) != len(names):
+        raise ValueError('XLSX 工作表名称重复，请修正。')
+    return definitions
+
+
+def inspect_table(data, kind, sheet=None):
+    """Bounded preview; never silently selects one of multiple worksheets."""
+    sheets = []
+    if kind == 'xlsx':
+        with _open_xlsx(data) as book:
+            sheets = [x.get('name') for x in _sheet_definitions(book)]
+        if sheet is None and len(sheets) > 1:
+            return {'sheets': sheets, 'sheet': None, 'requires_sheet': True,
+                    'headers': [], 'preview': [], 'row_numbers': [],
+                    'row_count': None, 'sku_candidates': []}
+    table = parse_table(data, kind, sheet)
+    return {'sheets': table['sheets'], 'sheet': table['sheet'], 'requires_sheet': False,
+            'headers': table['headers'], 'preview': table['rows'][:3],
+            'row_numbers': table['row_numbers'][:3], 'row_count': len(table['rows']),
+            'sku_candidates': [h for h in table['headers'] if h.strip().casefold() in SKU_ALIASES]}
 
 
 def parse_table(data, kind, sheet=None):
@@ -27,30 +74,22 @@ def parse_table(data, kind, sheet=None):
             dialect = csv.Sniffer().sniff(content[:8192], delimiters=',;\t')
         except csv.Error:
             dialect = csv.excel
-        reader = csv.reader(io.StringIO(content, newline=''), dialect, strict=True)
-        for row in reader:
+        reader = csv.reader(io.StringIO(content, newline=''), dialect, skipinitialspace=False, strict=True)
+        for row_number, row in enumerate(reader, 1):
             if any(x.strip() for x in row):
-                records.append((reader.line_num, row))
+                records.append((row_number, row))
                 types.append(['text'] * len(row))
             if len(records) > 20001:
                 raise ValueError('产品记录超过 20,000 条。')
     elif kind == 'xlsx':
-        with zipfile.ZipFile(io.BytesIO(data)) as book:
-            infos = book.infolist()
-            if len(infos) > 3000 or sum(x.file_size for x in infos) > 80 * 1024 * 1024:
-                raise ValueError('XLSX 解压后超过限制，请拆分。')
-            if len({x.filename for x in infos}) != len(infos):
-                raise ValueError('XLSX 中存在重复内部路径。')
+        with _open_xlsx(data) as book:
             def xml(path):
-                raw = book.read(path)
-                if b'<!DOCTYPE' in raw.upper() or b'<!ENTITY' in raw.upper():
-                    raise ValueError('不支持 XML 实体声明。')
-                return ET.fromstring(raw)
+                return _xml(book, path)
             shared = []
             if 'xl/sharedStrings.xml' in book.namelist():
                 shared = [''.join(t.text or '' for t in si.findall('.//s:t', NS))
                           for si in xml('xl/sharedStrings.xml').findall('s:si', NS)]
-            definitions = xml('xl/workbook.xml').findall('s:sheets/s:sheet', NS)
+            definitions = _sheet_definitions(book)
             sheets = [x.get('name') for x in definitions]
             if not definitions:
                 raise ValueError('XLSX 没有工作表。')

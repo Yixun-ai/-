@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SKU Kit · 商品资料</title><link rel="stylesheet" href="/style.css"></head>
 <body>
-<header class="topbar"><span class="wordmark">sku<span class="wordmark-dot">.</span>kit</span><span class="topbar-label">商品资料</span><div class="project-actions"><span id="draftStatus">在本机整理</span><button id="openProject" type="button">打开进度</button><button id="saveProject" type="button" disabled>保存进度</button><input id="projectInput" type="file" accept=".json" hidden></div></header>
+<header class="topbar"><span class="wordmark">sku<span class="wordmark-dot">.</span>kit</span><span class="topbar-label">商品资料</span><div class="project-actions"><span id="draftStatus">在本机整理</span><button id="newBatch" type="button">新的一批</button><button id="openProject" type="button">打开进度</button><button id="saveProject" type="button" disabled>保存进度</button><input id="projectInput" type="file" accept=".json" hidden></div></header>
 <main>
 <div class="page-heading"><div><p class="eyebrow">资料整理 / 新的一批</p><h1>把这批资料整理好。</h1><p class="lead">先对上产品和图片，再把遗漏找出来。</p></div><span class="page-note">原文件保留<br>整理结果另存</span></div>
 <div class="layout">
@@ -10,10 +10,11 @@
 <div class="file-row"><label for="table">产品表<small>CSV 或 XLSX，首行是列名</small></label><div class="file-control"><input id="table" type="file" accept=".csv,.xlsx"><span id="tableMeta" class="file-meta">还没有选择</span></div></div>
 <div class="file-row"><label for="images">图片文件夹<small>包含里面的子文件夹</small></label><div class="file-control"><input id="images" type="file" webkitdirectory multiple><span id="imageMeta" class="file-meta">还没有选择</span></div></div>
 <p id="selected" class="selection-note">一次处理最多 50 MB 的资料。</p>
+<details id="tablePreview" class="table-preview" hidden><summary id="previewSummary">查看表格前 3 行</summary><div class="scroll"><table class="preview-table"><thead id="previewHead"></thead><tbody id="previewRows"></tbody></table></div></details>
 </section>
 <section class="form-section"><div class="section-heading"><span class="section-number">02</span><h2>怎么对应</h2></div>
-<div class="field-pair"><label>产品编号在哪一列<input id="column" type="text" placeholder="自动识别 SKU、货号等列名"><small>多个编号列时，填入准确列名。</small></label><label>图片文件怎么命名<select id="mode"><option value="exact">文件名就是产品编号</option><option value="suffix">编号后还有主图、细节等后缀</option></select><small id="matchExample">例如：001.png 对应产品 001</small></label></div>
-<details class="extra-options"><summary>工作表、尺寸和大小写</summary><div class="options"><label>工作表名称<input id="sheet" placeholder="有多张工作表时填写"></label><div class="size-fields"><label>最小宽度 / px<input id="width" type="number" min="0" max="20000" value="0"></label><label>最小高度 / px<input id="height" type="number" min="0" max="20000" value="0"></label></div><label>重复编号怎么处理<select id="duplicates"><option value="error">作为错误，先修正编号</option><option value="repeat_rows">同一商品的多条记录</option></select><small>名称不同的重复编号仍需修正。</small></label><label class="inline"><input id="ignoreCase" type="checkbox">编号不区分大小写</label></div></details>
+<label id="sheetField" class="sheet-field" hidden>使用哪张工作表<select id="sheet"><option value="">先选择产品表</option></select><small>多张工作表时由你选择，不自动猜测。</small></label><div class="field-pair"><label>产品编号在哪一列<select id="column"><option value="">先选择产品表</option></select><small id="columnHelp">读取表格后，可以直接选择列名。</small></label><label>图片文件怎么命名<select id="mode"><option value="exact">文件名就是产品编号</option><option value="suffix">编号后还有主图、细节等后缀</option></select><small id="matchExample">例如：001.png 对应产品 001</small></label></div>
+<p id="inspectNote" class="selection-note" role="status"></p><details class="extra-options"><summary>尺寸、重复编号和大小写</summary><div class="options"><div class="size-fields"><label>最小宽度 / px<input id="width" type="number" min="0" max="20000" value="0"></label><label>最小高度 / px<input id="height" type="number" min="0" max="20000" value="0"></label></div><label>重复编号怎么处理<select id="duplicates"><option value="error">作为错误，先修正编号</option><option value="repeat_rows">同一商品的多条记录</option></select><small>名称不同的重复编号仍需修正。</small></label><label class="inline"><input id="ignoreCase" type="checkbox">编号不区分大小写</label></div></details>
 <div class="check-action"><button id="check" type="submit" class="primary">检查这批资料</button><span>图片有多个可能编号时，会留给你确认。</span></div>
 </section>
 </form>
@@ -37,5 +38,7 @@
 </section>
 <details class="technical"><summary>查看完整检查记录</summary><pre id="json"></pre></details></section>
 <dialog id="assignDialog" aria-labelledby="assignmentTitle"><div class="dialog-heading"><h2 id="assignmentTitle">确认这张图属于哪个产品</h2><button id="cancelAssignment" type="button">关闭</button></div><div id="assignmentPreview" class="assignment-preview"></div><p id="assignmentPath" class="assignment-path"></p><p id="assignmentContext" class="assignment-context"></p><label>产品编号<input id="assignmentSku" list="skuOptions" autocomplete="off" placeholder="选择或填写完整产品编号"></label><datalist id="skuOptions"></datalist><p id="assignmentError" class="assignment-error" role="status"></p><div class="dialog-actions"><button id="confirmAssignment" type="button" class="primary">确认归属</button><button id="unassign" type="button">暂不归类</button><button id="autoAssign" type="button">恢复按文件名匹配</button></div><p class="dialog-note">确认记录随资料包保存；原图和原表不改动。无法读取的图片需要补选替换。</p></dialog>
-<footer>检查文件是否齐全、能否读取。商品是否拍对，仍需你核对。</footer>
+<dialog id="resetDialog" aria-labelledby="resetTitle"><h2 id="resetTitle">开始新的一批资料？</h2><p>当前选择和未保存的确认会清空，原始文件不会修改。需要继续处理时，请先保存进度。</p><div class="dialog-actions"><button id="cancelReset" type="button">接着处理当前资料</button><button id="confirmReset" type="button" class="primary">清空并开始</button></div></dialog>
+<details class="verify-section"><summary>核验已有的交付包</summary><p>选择 SKU Kit 导出的 ZIP，检查原表和原图是否与包内清单一致。不解压到磁盘，也不替换当前批次。</p><button id="verifyPackage" type="button">选择资料包并核验</button><input id="verifyInput" type="file" accept=".zip" hidden><p id="verifyResult" role="status">支持最多 70 MB 的资料包；更大文件可用命令行核验。</p></details>
+<footer><span>检查文件是否齐全、能否读取。商品是否拍对，仍需你核对。</span><span id="serviceState">正在连接本机服务…</span></footer>
 </main><script type="module" src="/app.mjs"></script></body></html>

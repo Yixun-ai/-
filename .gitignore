@@ -18,3 +18,7 @@ node_modules/
 private-data/
 *.sku-kit.json
 *.zip
+
+# Desktop build output
+build-desktop/
+.venv-build/

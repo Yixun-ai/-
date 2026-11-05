@@ -1,4 +1,4 @@
-# SKU Kit 0.3 接口
+# SKU Kit 0.4 接口
 
 ## HTTP
 
@@ -30,9 +30,27 @@ options.sheet：多工作表必填。match_mode 为 exact / suffix；duplicate_p
 - checklist：200 CSV，允许在有阻断错误时导出问题；输入无法解析仍返回 400。
 - 输入/运行失败：400 JSON，`status=invalid_input` 及 error。
 
+### 表格预读与服务状态
+
+GET `/api/health` 返回 `status`、`version`、`storage=memory` 和 `model_api_required=false`，不包含业务文件。
+
+POST `/api/inspect`，Content-Type 为 application/json，只传原表和可选工作表：
+
+```json
+{"table":{"name":"products.xlsx","content":"BASE64"},"sheet":"商品资料"}
+```
+
+返回 `sheets`、`sheet`、`requires_sheet`、`headers`、`sku_candidates`、`row_count`、最多 3 行 `preview` 和对应 `row_numbers`。多工作表且未选择时只返回工作表列表，`requires_sheet=true`，不猜测其中一张。编号候选不止一列时由调用者明确选择。
+
+### 已有交付包核验
+
+POST `/api/verify`，Content-Type 为 application/zip，Body 直接为 ZIP 原始字节，HTTP 上限 70 MB。返回 JSON：`kind=package_verification`、`status=ok / error / invalid_input`、`summary`、`issues`、`limits` 和 `notice`。HTTP 200 表示核验完成，必须再检查 JSON 的 status；请求格式错误仍返回 400。
+
+核验不写入或解压到磁盘。检查文件集合、CRC、原表与原图 SHA-256、清单和报告的一致性。清单没有数字签名，不能证明发送者身份或图片中的商品是否正确。支持 schema 1.1 的 0.3/0.4 交付包。
+
 ## 标准结果
 
-schema_version=1.1，engine_version=0.3.0。
+schema_version=1.1，engine_version=0.4.0。
 包含 summary（products、images、matched_images、errors、warnings）、rules、table_sha256、context_sha256、products、images、issues、assignments、limits。
 products 每项包括 row（原表行号）、sku、name。
 images 每项包括 source、sha256、size、sku、candidates、valid、width、height、assignment_source（filename / manual）。
@@ -61,6 +79,7 @@ sku=null 表示明确暂不归类，保留未匹配提醒；删除该项则恢�
 ## CLI / MCP
 
 CLI 的 --assignments-file 指向上述 JSON，--duplicate-policy 控制重复记录。checklist 子命令可导出 CSV。
+`python3 cli.py verify --package /data/delivery.zip` 可独立核验已有交付包，不需要原始文件；CLI 压缩及展开大小上限各 320 MB、最多 5,006 个文件。退出码 0=核验通过，2=核验未通过，1=输入/读取失败。stdout 使用 UTF-8 JSON。
 MCP stdio：先 initialize，再 notifications/initialized，然后 tools/list / tools/call。
 工具 sku_check、sku_pack、sku_checklist；table、images 及 output / assignments_file 路径限于配置 root。
 也可直接传 assignments 对象。assignments 与 assignments_file 不能同时指定。

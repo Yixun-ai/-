@@ -6,6 +6,7 @@ let batch = {table:null, images:[]}, assignments = {}, report = null, busy = fal
 let activeTab = 'issues', reviewPage = 0, editingSource = null, dirty = false;
 let reviewPages = 1;
 let previewUrls = new Map();
+let tableInfo = null;
 const PAGE_SIZE = 24;
 
 function node(tag, text, className) {
@@ -20,6 +21,8 @@ function clearPreviews() {for(const value of previewUrls.values())URL.revokeObje
 function controls() {
   document.querySelectorAll('#form input,#form select,#form button,.project-actions button,#results button,#reviewToolbar input,#reviewToolbar select,#assignDialog input,#assignDialog button').forEach(x=>x.disabled=busy);
   $('allow').disabled=busy;
+  $('verifyPackage').disabled=busy;
+  $('check').disabled=busy||!batch.table||Boolean(tableInfo?.requires_sheet);
   $('pack').disabled=busy||!report||report.summary.errors>0||(report.summary.warnings>0&&!$('allow').checked);
   $('saveProject').disabled=busy||!batch.table;
   $('checklist').disabled=busy||!report||!report.issues.length;
@@ -35,8 +38,68 @@ function fileInfo() {
 }
 function invalidate() {
   report=null;$('results').hidden=true;$('warningRow').hidden=true;$('allow').checked=false;
+  for(const id of ['issues','reviewRows','json'])$(id).replaceChildren();
   for(const id of ['productCount','matchedCount','problemCount'])$(id).textContent='—';
   reviewPage=0;controls();
+}
+function selectOptions(id, values, placeholder, selected='') {
+  const field=$(id);field.replaceChildren();
+  const empty=node('option',placeholder);empty.value='';field.append(empty);
+  for(const value of values){const option=node('option',value);option.value=value;field.append(option);}
+  field.value=values.includes(selected)?selected:'';
+}
+function tableDetails(info, selectedColumn='') {
+  tableInfo=info;
+  const candidates=info?.sku_candidates||[];
+  selectOptions('sheet',info?.sheets||[],'请选择工作表',info?.sheet||'');
+  $('sheetField').hidden=!info?.sheets?.length;
+  selectOptions('column',info?.headers||[],info?'请选择产品编号列':'先选择产品表',selectedColumn||(candidates.length===1?candidates[0]:''));
+  $('columnHelp').textContent=candidates.length>1?'发现多个编号列，请选择本批次使用的一列。':info?.headers?.length?'选择保存货号 / SKU 的列；其余列会保留在原表里。':'读取表格后，可以直接选择列名。';
+  $('inspectNote').textContent=info?.requires_sheet?'这份表有多张工作表，请先选择要整理的一张。':info?`已读取 ${info.row_count} 条记录、${info.headers.length} 列。`:'选择产品表后，会先读取列名供你确认。';
+  $('tablePreview').hidden=!info?.preview?.length;
+  $('previewHead').replaceChildren();$('previewRows').replaceChildren();
+  if(info?.preview?.length){
+    const head=node('tr');head.append(node('th','原表行号'));for(const text of info.headers)head.append(node('th',text));$('previewHead').append(head);
+    info.preview.forEach((row,index)=>{const tr=node('tr');tr.append(node('td',String(info.row_numbers[index])));for(const cell of row)tr.append(node('td',cell));$('previewRows').append(tr);});
+    $('previewSummary').textContent=`查看表格前 ${info.preview.length} 行 · 原始内容`;
+  }
+}
+async function inspectFile(file, sheet=null) {
+  if(file.size>20*1024*1024)throw new Error('产品表超过 20 MB，请拆分。');
+  const data={table:{name:file.name,content:await base64(file)}};
+  if(sheet)data.sheet=sheet;
+  const result=await request('inspect',data);return result.report;
+}
+async function chooseTable(file) {
+  if(!file||busy)return;busy=true;controls();message('正在读取表格，列名和工作表会显示出来…');
+  try {
+    if(file.size+batch.images.reduce((n,x)=>n+x.file.size,0)>MAX_BYTES)throw new Error('加入产品表后超过 50 MB。');
+    const info=await inspectFile(file);
+    batch.table=file;assignments={};tableDetails(info);editedFiles();
+    if(info.requires_sheet)message('请在“怎么对应”里选择工作表，再确认编号列。');
+    else if(!$('column').value)message('表格已读取，请选择产品编号所在列。');
+    else message('表格已读取，确认编号列和图片后就可以检查。');
+  }catch(error){$('table').value='';message('未替换产品表：'+error.message+' 当前资料保持不变。','error');}
+  finally{busy=false;controls();}
+}
+async function chooseSheet() {
+  if(!batch.table||busy)return;const selected=$('sheet').value;
+  assignments={};invalidate();markDirty();busy=true;controls();message('正在读取选中的工作表…');
+  try {const info=await inspectFile(batch.table,selected);tableDetails(info);message(info.requires_sheet?'请选择要使用的工作表。':'工作表已切换，请确认编号列后重新检查。');}
+  catch(error){
+    tableInfo={...(tableInfo||{}),requires_sheet:true};selectOptions('column',[],'工作表未读取');$('tablePreview').hidden=true;
+    message('无法读取该工作表：'+error.message+' 请改选其他工作表，或修正原表。','error');
+  }finally{busy=false;controls();}
+}
+function resetBatch() {
+  clearPreviews();batch={table:null,images:[]};assignments={};editingSource=null;dirty=false;
+  for(const id of ['table','images','appendImages','projectInput'])$(id).value='';
+  $('mode').value='exact';$('duplicates').value='error';$('ignoreCase').checked=false;$('width').value=$('height').value='0';
+  $('reviewSearch').value='';$('reviewFilter').value='all';$('tablePreview').open=false;
+  tableDetails(null);invalidate();fileInfo();$('draftStatus').textContent='在本机整理';
+  for(const id of ['assignmentPreview','skuOptions','assignmentPath','assignmentContext','assignmentError'])$(id).replaceChildren();
+  $('assignmentSku').value='';$('verifyResult').textContent='支持最多 70 MB 的资料包；更大文件可用命令行核验。';$('verifyResult').className='';
+  message('上一批选择已清空，可以开始新的一批。');
 }
 function base64(file) {
   return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(new Error('读取失败：'+file.name));reader.readAsDataURL(file);});
@@ -49,6 +112,8 @@ function options() {
 }
 async function payload() {
   if(!batch.table)throw new Error('请先选择产品表。');
+  if(tableInfo?.requires_sheet)throw new Error('请先选择要使用的工作表。');
+  if(tableInfo?.headers?.length&&!$('column').value)throw new Error('请选择产品编号所在列。');
   if(batch.images.length>5000)throw new Error('单次最多处理 5,000 个文件。');
   if(batch.table.size+batch.images.reduce((n,x)=>n+x.file.size,0)>MAX_BYTES)throw new Error('资料超过 50 MB，请分批处理。');
   const images=[];
@@ -192,9 +257,10 @@ async function restoreProject(file) {
     if(file.size>72*1024*1024)throw new Error('进度文件超过 72 MB。');
     const data=validateProject(JSON.parse(await file.text()));
     const restored={table:decodedFile(data.table),images:data.images.map(x=>({name:x.name,file:decodedFile(x)}))};
+    const info=await inspectFile(restored.table,data.options.sheet||null);
     const result=await request('check',data);if(!result.report)throw new Error('恢复检查失败。');
     clearPreviews();batch=restored;assignments=data.options.assignments||{};
-    $('table').value='';$('images').value='';$('column').value=data.options.sku_column||'';$('sheet').value=data.options.sheet||'';
+    $('table').value='';$('images').value='';tableDetails(info,result.report.rules.sku_column);
     $('mode').value=data.options.match_mode||'exact';$('duplicates').value=data.options.duplicate_policy||'error';
     $('ignoreCase').checked=data.options.case_sensitive===false;$('width').value=data.options.min_width??0;$('height').value=data.options.min_height??0;
     $('allow').checked=false;$('reviewSearch').value='';$('reviewFilter').value='all';fileInfo();activeTab='review';reviewPage=0;show(result.report);dirty=false;$('draftStatus').textContent='已恢复进度';
@@ -205,9 +271,17 @@ $('form').addEventListener('submit',event=>{event.preventDefault();run();});
 $('pack').addEventListener('click',()=>run('pack'));$('checklist').addEventListener('click',()=>run('checklist'));
 $('saveProject').addEventListener('click',saveProject);$('openProject').addEventListener('click',()=>$('projectInput').click());
 $('projectInput').addEventListener('change',event=>restoreProject(event.target.files[0]));
-$('table').addEventListener('change',()=>{if($('table').files[0]){batch.table=$('table').files[0];assignments={};editedFiles();}});
-$('images').addEventListener('change',()=>{batch.images=Array.from($('images').files).map(file=>({name:fileKey(file),file}));assignments={};editedFiles();});
-for(const id of ['column','sheet','mode','width','height','ignoreCase','duplicates'])$(id).addEventListener('change',()=>{if(id==='column'||id==='sheet')assignments={};invalidate();fileInfo();markDirty();message('规则已修改，请重新检查。');});
+$('newBatch').addEventListener('click',()=>{if(batch.table||batch.images.length)$('resetDialog').showModal();else resetBatch();});
+$('cancelReset').addEventListener('click',()=>$('resetDialog').close());
+$('confirmReset').addEventListener('click',()=>{$('resetDialog').close();resetBatch();});
+$('table').addEventListener('change',()=>chooseTable($('table').files[0]));
+$('images').addEventListener('change',()=>{
+  const images=Array.from($('images').files).map(file=>({name:fileKey(file),file}));if(!images.length)return;
+  if(images.length>5000||(batch.table?.size||0)+images.reduce((n,x)=>n+x.file.size,0)>MAX_BYTES){$('images').value='';message('未替换图片：最多 5,000 个文件，原表与图片总计不超过 50 MB。当前资料保持不变。','error');return;}
+  batch.images=images;assignments={};editedFiles();
+});
+$('sheet').addEventListener('change',chooseSheet);
+for(const id of ['column','mode','width','height','ignoreCase','duplicates'])$(id).addEventListener('change',()=>{if(id==='column')assignments={};invalidate();fileInfo();markDirty();message('规则已修改，请重新检查。');});
 $('appendButton').addEventListener('click',()=>$('appendImages').click());$('appendImages').addEventListener('change',event=>appendFiles(Array.from(event.target.files)));
 $('allow').addEventListener('change',controls);
 $('issuesTab').addEventListener('click',()=>switchTab('issues'));$('reviewTab').addEventListener('click',()=>switchTab('review'));
@@ -215,4 +289,23 @@ for(const id of ['reviewSearch','reviewFilter'])$(id).addEventListener(id==='rev
 $('previous').addEventListener('click',()=>{reviewPage--;renderReview();});$('next').addEventListener('click',()=>{reviewPage++;renderReview();});
 $('confirmAssignment').addEventListener('click',()=>assign('assign'));$('unassign').addEventListener('click',()=>assign('unassign'));$('autoAssign').addEventListener('click',()=>assign('auto'));
 $('cancelAssignment').addEventListener('click',()=>$('assignDialog').close());
-fileInfo();controls();
+window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
+async function health() {
+  try {const response=await fetch('/api/health');const value=await response.json();if(!response.ok||value.status!=='ok')throw new Error();$('serviceState').textContent=`v${value.version} · 本机处理`;}
+  catch {$('serviceState').textContent='本机服务未连接，请检查启动窗口';}
+}
+$('verifyPackage').addEventListener('click',()=>$('verifyInput').click());
+$('verifyInput').addEventListener('change',async()=>{
+  const file=$('verifyInput').files[0];if(!file||busy)return;
+  const output=$('verifyResult');output.className='';
+  if(file.size>70*1024*1024){output.textContent='资料包超过 70 MB，请用命令行核验。';output.className='error';$('verifyInput').value='';return;}
+  busy=true;controls();output.textContent='正在逐项核对文件和 SHA-256…';
+  try {
+    const response=await fetch('/api/verify',{method:'POST',headers:{'Content-Type':'application/zip'},body:file});
+    const value=await response.json();if(!response.ok||value.error)throw new Error(value.error||'核验服务未完成。');
+    if(value.status==='ok'){output.className='ok';output.textContent=`核验通过：${value.summary.images} 张图片，原表与包内清单一致。此核验不证明文件来源，也不判断图片内容。`;}
+    else {output.className='error';output.textContent='核验未通过：'+(value.issues||[]).slice(0,5).map(x=>[x.subject,x.message].filter(Boolean).join('：')).join('；');}
+  }catch(error){output.className='error';output.textContent='核验未完成：'+error.message;}
+  finally{busy=false;controls();$('verifyInput').value='';}
+});
+tableDetails(null);fileInfo();controls();health();
