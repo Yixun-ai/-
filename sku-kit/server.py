@@ -6,6 +6,7 @@ import sys
 import threading
 import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from socketserver import TCPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -19,6 +20,14 @@ else:
     from engine import VERSION, analyze, package, checklist
     from verify import verify_package
 import base64
+
+
+class LocalHTTPServer(ThreadingHTTPServer):
+    """Numeric loopback startup must not wait for a reverse-DNS resolver."""
+    def server_bind(self):
+        TCPServer.server_bind(self)
+        self.server_name = self.server_address[0]
+        self.server_port = self.server_address[1]
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -130,7 +139,7 @@ def main():
     parser.add_argument('--no-open', action='store_true')
     args = parser.parse_args()
     try:
-        server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
+        server = LocalHTTPServer(('127.0.0.1', args.port), Handler)
     except OSError:
         print('无法使用指定端口，请不带 --port 自动选择端口，或指定其他端口重试。')
         return 1

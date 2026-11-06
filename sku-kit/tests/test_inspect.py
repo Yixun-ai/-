@@ -5,10 +5,9 @@ import unittest
 import urllib.request
 import urllib.error
 import zipfile
-from http.server import ThreadingHTTPServer
 
 from engine import VERSION, analyze, package, sha
-from server import Handler
+from server import Handler, LocalHTTPServer
 from table_io import inspect_table
 from test_engine import picture, workbook
 
@@ -75,7 +74,7 @@ class InspectionTests(unittest.TestCase):
 class InspectionHTTPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server = ThreadingHTTPServer(('127.0.0.1',0), Handler)
+        cls.server = LocalHTTPServer(('127.0.0.1',0), Handler)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
         cls.url = 'http://127.0.0.1:%d' % cls.server.server_port

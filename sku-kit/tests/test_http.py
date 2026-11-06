@@ -6,17 +6,24 @@ import unittest
 import urllib.request
 import urllib.error
 import zipfile
-from http.server import ThreadingHTTPServer
 from PIL import Image
+from unittest.mock import patch
 
 from engine import analyze
-from server import Handler
+from server import Handler, LocalHTTPServer
 
 
 class HTTPTests(unittest.TestCase):
+    def test_local_server_starts_without_hostname_resolution(self):
+        with patch('socket.getfqdn', side_effect=OSError('resolver unavailable')) as resolver:
+            with LocalHTTPServer(('127.0.0.1', 0), Handler) as local:
+                self.assertEqual(local.server_name, '127.0.0.1')
+                self.assertGreater(local.server_port, 0)
+            resolver.assert_not_called()
+
     @classmethod
     def setUpClass(cls):
-        cls.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        cls.server = LocalHTTPServer(('127.0.0.1', 0), Handler)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
         cls.url = 'http://127.0.0.1:%d' % cls.server.server_port

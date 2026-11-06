@@ -30,14 +30,22 @@ def clean_environment():
     env.pop('PYTHONHOME', None)
     env['PYTHONUTF8'] = '1'
     env['PYTHONNOUSERSITE'] = '1'
+    env['PYTHONUNBUFFERED'] = '1'
+    env['PYTHONFAULTHANDLER'] = '1'
     env['PIP_NO_INDEX'] = '1'
     env['PIP_DISABLE_PIP_VERSION_CHECK'] = '1'
     return env
 
 
-def run(command, cwd, env, input_text=None):
-    result = subprocess.run([str(value) for value in command], cwd=str(cwd), env=env,
-                            input=input_text, capture_output=True, text=True, encoding='utf-8', timeout=60)
+def run(command, cwd, env, input_text=None, timeout=60):
+    try:
+        result = subprocess.run([str(value) for value in command], cwd=str(cwd), env=env,
+                                input=input_text, capture_output=True, text=True, encoding='utf-8', timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        def decoded(value):
+            return value.decode('utf-8', errors='replace') if isinstance(value, bytes) else value or ''
+        raise RuntimeError('Command timed out (%ss): %s\n%s\n%s' %
+                           (timeout, command[0], decoded(error.stdout), decoded(error.stderr))) from error
     if result.returncode:
         raise RuntimeError('Command failed (%d): %s\n%s\n%s' %
                            (result.returncode, command[0], result.stdout, result.stderr))
@@ -52,23 +60,68 @@ def helpers():
     return module
 
 
+def startup_diagnostics(command, process):
+    """Inspect only this test subprocess; never collect environment variables."""
+    details = ['startup pid=%d, returncode=%r, Python=%s' %
+               (process.pid, process.poll(), sys.version.split()[0])]
+    executable = Path(command[0])
+    if executable.name == 'sku-kit':
+        try:
+            prefix = executable.read_bytes()[:4096].decode('utf-8', errors='replace')
+            details.append('console launcher: path_length=%d, shebang=%r, shell_wrapper=%r' %
+                           (len(str(executable)), prefix.splitlines()[0][:512], "'''exec'" in prefix))
+        except (OSError, IndexError) as error:
+            details.append('console launcher unavailable: ' + str(error))
+    if os.name != 'nt':
+        try:
+            snapshot = subprocess.run(['ps', '-o', 'pid=,ppid=,state=,comm=', '-p', str(process.pid)],
+                                      capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=3)
+            details.append('owned process: ' + snapshot.stdout.strip())
+        except (OSError, subprocess.TimeoutExpired) as error:
+            details.append('process snapshot unavailable: ' + str(error))
+    if sys.platform == 'darwin' and process.poll() is None:
+        try:
+            # sample yields the native wait stack (for example resolver/hostname
+            # lookup) without changing the tested launcher or killing the process.
+            sampled = subprocess.run(['/usr/bin/sample', str(process.pid), '1', '10', '-mayDie'],
+                                     capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=8)
+            details.append('native startup sample:\n' + (sampled.stdout or sampled.stderr)[:14000])
+        except (OSError, subprocess.TimeoutExpired) as error:
+            details.append('native startup sample unavailable: ' + str(error))
+    elif sys.platform.startswith('linux'):
+        try:
+            details.append('kernel wait channel: ' + Path('/proc/%d/wchan' % process.pid).read_text().strip())
+        except OSError:
+            pass
+    return '\n'.join(details)
+
+
 def check_http(command, cwd, env, expected_version, smoke):
     log_path = cwd / 'http.log'
+    label = 'console' if Path(command[0]).name in ('sku-kit', 'sku-kit.exe') else 'python-module'
+    started = time.monotonic()
+    print('[installed probe] %s HTTP: starting' % label, flush=True)
     with log_path.open('wb') as log:
         process = subprocess.Popen([str(value) for value in command] + ['--no-open', '--port', '0'],
                                    cwd=str(cwd), env=env, stdout=log, stderr=subprocess.STDOUT)
+    print('[installed probe] %s HTTP: spawned pid=%d' % (label, process.pid), flush=True)
     try:
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             output = log_path.read_text(encoding='utf-8', errors='replace')
             match = re.search(r'http://127\.0\.0\.1:\d+', output)
             if match:
+                print('[installed probe] %s HTTP: startup ready after %.2fs' %
+                      (label, time.monotonic() - started), flush=True)
                 smoke.verify(match.group(0), expected_version=expected_version)
+                print('[installed probe] %s HTTP: static/check/pack/verify passed' % label, flush=True)
                 return
             if process.poll() is not None:
                 raise RuntimeError('Installed HTTP entry point exited:\n' + output)
             time.sleep(0.1)
-        raise RuntimeError('Installed HTTP entry point timed out:\n' + log_path.read_text(errors='replace'))
+        raise RuntimeError('Installed HTTP entry point timed out after 30s (%s):\n%s\nCaptured HTTP output:\n%s' %
+                           (label, startup_diagnostics(command, process),
+                            log_path.read_text(encoding='utf-8', errors='replace')))
     finally:
         if process.poll() is None:
             process.terminate()
@@ -96,6 +149,7 @@ def probe(expected_version):
             raise AssertionError('Installation leaked a top-level module: ' + module)
     if importlib.metadata.version('sku-kit') != expected_version:
         raise AssertionError('Installed metadata version differs from source/wheel version')
+    print('[installed probe] isolated package imports and metadata passed', flush=True)
     smoke = helpers()
     env = clean_environment()
     scripts = Path(sys.executable).parent
@@ -141,6 +195,7 @@ def probe(expected_version):
                                    ['--output', str(checklist_path)], cwd, env))
         if not checklist.get('export', {}).get('written') or not checklist_path.read_bytes():
             raise AssertionError('Installed CLI could not export its checklist')
+        print('[installed probe] CLI version/check/pack/checklist/verify passed', flush=True)
         messages = [
             {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-11-25',
              'capabilities': {}, 'clientInfo': {'name': 'installed-wheel-smoke', 'version': '1'}}},
@@ -172,6 +227,9 @@ def probe(expected_version):
             for name, original in originals.items():
                 if archive.read('products/%s/%s' % (name[:3], name)) != original:
                     raise AssertionError('Installed MCP changed original image bytes')
+        print('[installed probe] MCP initialize/check/pack and original bytes passed', flush=True)
+        run([commands['sku-kit'], '--help'], cwd, env)
+        print('[installed probe] console --help passed (launcher/imports/argument parser)', flush=True)
         check_http([commands['sku-kit']], cwd, env, expected_version, smoke)
         check_http([sys.executable, '-I', '-m', 'sku_kit'], cwd, env, expected_version, smoke)
     print('PASS: offline wheel install; isolated package namespace; external-cwd CLI/MCP/module/HTTP/static/check/pack/verify.')
@@ -220,7 +278,10 @@ def main():
                                 cwd=str(root), env=env, capture_output=True, text=True, encoding='utf-8', timeout=120)
         if result.returncode:
             raise RuntimeError('Offline installation failed. Prepare matching dependency wheels first:\n' + result.stdout + result.stderr)
-        print(run([python, '-I', Path(__file__).resolve(), '--probe', '--expected-version', expected_version], root, env).strip())
+        # Reserve diagnostic time around the unchanged 30-second HTTP startup
+        # deadline; native sampling must not be masked by this outer supervisor.
+        print(run([python, '-I', Path(__file__).resolve(), '--probe', '--expected-version', expected_version],
+                  root, env, timeout=90).strip())
     return 0
 
 
