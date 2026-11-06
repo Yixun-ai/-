@@ -15,7 +15,10 @@ def main():
         print('SKU Kit 启动失败：页面文件缺失，请完整解压下载包。', file=sys.stderr)
         return 1
     try:
-        import server
+        if __package__:
+            from . import server
+        else:
+            import server
         return server.main() or 0
     except Exception:
         print('SKU Kit 启动失败，请保留以下错误信息以便反馈。', file=sys.stderr)

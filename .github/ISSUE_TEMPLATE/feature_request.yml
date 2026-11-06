@@ -1,0 +1,39 @@
+name: 功能建议 / Feature request
+description: 描述你想完成的商品资料工作，以及当前卡住的地方。
+title: "[Feature] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先描述实际任务，不必先设计实现方案。只使用合成或脱敏内容。
+        安全联系请求可在标题注明“安全报告：请求私密沟通方式”，此处只填受影响版本和问题类别；不要填利用细节或上传样本。详见 SECURITY.md。
+        Chinese and English suggestions are welcome. Do not include customer data or secrets.
+  - type: textarea
+    id: workflow
+    attributes:
+      label: 你要完成什么 / Your workflow
+      description: 谁在什么场景下使用，输入与希望交付的结果是什么？安全联系请求只写版本和类别。
+      placeholder: "例如：每次收到供应商的产品表和多个图片文件夹后，需要……"
+    validations:
+      required: true
+  - type: textarea
+    id: obstacle
+    attributes:
+      label: 目前卡在哪里 / Current limitation
+      description: 当前怎么处理，哪个步骤耗时或容易出错？安全联系请求可填“需要私密通道”。
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 希望的行为 / Desired behavior
+      description: 描述可观察的结果；安全联系请求不需要填写技术细节。
+    validations:
+      required: false
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 提交前确认 / Before submitting
+      options:
+        - label: 本建议不含客户资料、密钥或安全漏洞利用细节。 / This request contains no sensitive data or exploit details.
+          required: true

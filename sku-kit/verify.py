@@ -13,8 +13,12 @@ import unicodedata
 import zipfile
 from pathlib import Path, PurePosixPath
 
-from engine import EXTENSIONS, MAX_TOTAL, unique_name
-from table_io import MAX_TABLE
+if __package__:
+    from .engine import EXTENSIONS, MAX_TOTAL, unique_name
+    from .table_io import MAX_TABLE
+else:
+    from engine import EXTENSIONS, MAX_TOTAL, unique_name
+    from table_io import MAX_TABLE
 
 MAX_PACKAGE = 320 * 1024 * 1024
 MAX_UNPACKED = 320 * 1024 * 1024

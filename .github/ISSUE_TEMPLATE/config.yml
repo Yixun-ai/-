@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用帮助 / Usage help
+    url: https://github.com/Yixun-ai/-/blob/main/SUPPORT.md
+    about: 先查上手、排错与支持范围，再提供合成复现。
+  - name: 安全报告 / Security report
+    url: https://github.com/Yixun-ai/-/blob/main/SECURITY.md
+    about: 不要公开漏洞利用细节、客户资料或密钥；请先阅读报告方式。

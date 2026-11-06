@@ -12,7 +12,7 @@
 
 完整解压 ZIP 后再启动。必须保留 `SKU-Kit` 文件夹中的全部文件，尤其是 `_internal`。
 
-若 Releases 暂无下载包，可在 GitHub Actions 的 `Desktop build` 成功运行记录中下载对应平台的 Artifact；这通常需要登录 GitHub。先解压外层 Artifact，再完整解压里面的程序 ZIP。只有两个平台都完成构建及最终 ZIP 冒烟测试后，主分支推送对应的预览版才会自动发布到 Releases。
+若 Releases 暂无下载包，可在 GitHub Actions 的 `Desktop build` 成功运行记录中下载对应平台的 Artifact；这通常需要登录 GitHub。先解压外层 Artifact，再完整解压里面的程序 ZIP。只有两个平台都完成构建及最终 ZIP 冒烟测试，且同一提交的源码 / 安装 CI 成功后，主分支推送对应的预览版才会自动发布到 Releases。
 
 - Windows x64：双击 `Start SKU Kit.bat`。
 - macOS Apple Silicon：双击 `Start SKU Kit.command`。
@@ -23,11 +23,11 @@
 
 ## 自己构建
 
-构建工具与桌面运行环境分开。下面在仓库根目录执行；Windows 将 `.venv-build/bin/python` 换为 `.venv-build\Scripts\python.exe`：
+源码与构建需要 Python 3.11+；桌面下载用户无需安装 Python。构建工具与桌面运行环境分开。下面在仓库根目录执行；Windows 将 `.venv-build/bin/python` 换为 `.venv-build\Scripts\python.exe`：
 
 ```sh
 python3 -m venv .venv-build
-.venv-build/bin/python -m pip install "Pillow==11.3.0" "pyinstaller==6.22.3" "pyinstaller-hooks-contrib==2026.9"
+.venv-build/bin/python -m pip install "Pillow==13.0.0" "pyinstaller==6.22.3" "pyinstaller-hooks-contrib==2026.9"
 .venv-build/bin/python sku-kit/build_desktop.py
 .venv-build/bin/python scripts/smoke_desktop.py --archive build-desktop/SKU-Kit-darwin-arm64.zip
 ```
@@ -40,16 +40,16 @@ Windows 软件必须在 Windows 上打包，macOS 软件必须在 macOS 上打�
 
 ## 自动验证与发布边界
 
-工作流在 Windows 2022 x64、macOS 15 ARM64 原生 runner 上分别构建。主分支的相关源码推送、标签推送、相关拉取请求或手动触发会运行。构建任务只有仓库读取权限；独立发布任务仅在 `main` 推送且两个平台的构建、测试和最终 ZIP 冒烟检查全部成功后运行，发布任务具有写入 Release 所需的权限。
+工作流在 Windows 2022 x64、macOS 15 ARM64 原生 runner 上分别构建。主分支的运行代码、打包配置、页面资源变更，或标签推送、相关拉取请求、手动触发会运行；普通文档修改走独立的轻量 CI，不必重新发布桌面包。构建任务只有仓库读取权限；独立发布任务仅在 `main` 推送且两个平台的构建、测试和最终 ZIP 冒烟检查全部成功后运行，发布任务具有写入 Release 所需的权限，并以只读方式确认同一提交的源码 / 安装 CI 已成功。
 
-发布任务只下载本次运行的两个平台产物，重新检查 ZIP 的 SHA-256，然后创建 `preview-提交短哈希` 预览版。下载包上传完成前保持草稿状态；不会覆盖旧版本，也不设为正式 Latest。重复运行同一提交若预览版已经存在，创建步骤会失败并保留原版本；手动构建、标签构建和拉取请求都不会自动发布。
+发布任务只下载本次运行的两个平台产物，重新检查 ZIP 的 SHA-256，然后创建 `preview-提交短哈希` 预览版。另附可选的合成示例 ZIP 和 Python wheel；它们不自动加载到工作台，项目尚未发布到 PyPI。下载包上传完成前保持草稿状态；不会覆盖旧版本，也不设为正式 Latest。重复运行同一提交若预览版已经存在，创建步骤会失败并保留原版本；手动构建、标签构建和拉取请求都不会自动发布。
 
 工作流不包含付款、模型 API 或签名服务。公共仓库的标准 GitHub runner 可免费使用；私有仓库使用者应先检查自己的 Actions 免费额度，再启用自动构建。[GitHub 官方 runner 说明](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)列出了免费公共 runner 与私有仓库额度的区别。
 
 打包后冒烟检查先把分发 ZIP 解压到临时目录，再从另一个独立工作目录启动真正的可执行文件，使用自动空闲端口，并验证：
 
 1. 页面、样式和 JS 资源可访问。
-2. 两个真实 PNG 与 CSV 可以检查和匹配。
+2. 真实 PNG / JPEG 与 CSV 可以检查和匹配。
 3. 导出的 ZIP 可完整读取，原始图片和表格字节保持一致。
 4. 缺图会阻止导出；允许警告也不能绕过错误。
 5. 外部网页来源请求会被拒绝。

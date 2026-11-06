@@ -4,8 +4,12 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from cli import run_paths
-from engine import VERSION
+if __package__:
+    from .cli import run_paths
+    from .engine import VERSION
+else:
+    from cli import run_paths
+    from engine import VERSION
 
 VERSIONS = ('2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25')
 PROPERTIES = {

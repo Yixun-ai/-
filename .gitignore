@@ -22,3 +22,11 @@ private-data/
 # Desktop build output
 build-desktop/
 .venv-build/
+
+# Python distribution artifacts
+build/
+dist/
+*.egg-info/
+.venv-dev/
+.venv-package/
+demo-data/

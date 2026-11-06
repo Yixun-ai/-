@@ -7,7 +7,7 @@ import urllib.error
 import zipfile
 from http.server import ThreadingHTTPServer
 
-from engine import analyze, package, sha
+from engine import VERSION, analyze, package, sha
 from server import Handler
 from table_io import inspect_table
 from test_engine import picture, workbook
@@ -86,7 +86,7 @@ class InspectionHTTPTests(unittest.TestCase):
 
     def test_health_and_inspect_use_actual_server(self):
         with urllib.request.urlopen(self.url+'/api/health') as response:
-            self.assertEqual(json.load(response)['version'], '0.4.0')
+            self.assertEqual(json.load(response)['version'], VERSION)
         import base64
         request = urllib.request.Request(self.url+'/api/inspect',
             data=json.dumps({'table': {'name':'test.csv','content':base64.b64encode(b'SKU,name\n001,cup').decode()}}).encode(),

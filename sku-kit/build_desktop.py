@@ -14,6 +14,11 @@ import sysconfig
 import tempfile
 import zipfile
 
+if __package__:
+    from ._version import VERSION
+else:
+    from _version import VERSION
+
 PYINSTALLER_VERSION = '6.22.3'
 SOURCE = Path(__file__).resolve().parent
 REPOSITORY = SOURCE.parent
@@ -94,9 +99,28 @@ def copy_dependency_notices(bundle):
             break
 
 
+def project_license():
+    """Locate our notice in either a source checkout or an installed wheel."""
+    for candidate in (REPOSITORY / 'LICENSE', SOURCE / 'LICENSE'):
+        if candidate.is_file():
+            return candidate
+    if __package__:
+        try:
+            distribution = importlib.metadata.distribution('sku-kit')
+        except importlib.metadata.PackageNotFoundError:
+            return None
+        for item in distribution.files or ():
+            if str(item).replace('\\', '/').endswith('.dist-info/licenses/LICENSE'):
+                candidate = Path(distribution.locate_file(item))
+                if candidate.is_file():
+                    return candidate
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output', type=Path, default=REPOSITORY / 'build-desktop')
+    build_root = REPOSITORY if (REPOSITORY / 'pyproject.toml').is_file() else Path.cwd()
+    parser.add_argument('--output', type=Path, default=build_root / 'build-desktop')
     args = parser.parse_args()
     output = args.output.resolve()
     try:
@@ -115,11 +139,10 @@ def main():
     write_launchers(bundle)
     copy_dependency_notices(bundle)
     # Include original license notices with the redistributable runtime.
-    for license_file in (REPOSITORY / 'LICENSE', SOURCE / 'LICENSE'):
-        if license_file.is_file():
-            shutil.copy2(license_file, bundle / 'SKU-Kit-LICENSE.txt')
-            break
-    metadata = {'python': platform.python_version(), 'system': platform.system(),
+    license_file = project_license()
+    if license_file is not None:
+        shutil.copy2(license_file, bundle / 'SKU-Kit-LICENSE.txt')
+    metadata = {'sku_kit': VERSION, 'python': platform.python_version(), 'system': platform.system(),
                 'architecture': platform.machine(), 'pyinstaller': installed,
                 'pillow': importlib.metadata.version('Pillow')}
     (bundle / 'build-info.json').write_text(json.dumps(metadata, indent=2) + '\n', encoding='utf-8')

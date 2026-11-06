@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Launch the actual distributable and verify UI, checking, blocking, and ZIP bytes."""
 import argparse
+import ast
 import base64
 import io
 import json
@@ -28,6 +29,9 @@ def png(red, green, blue):
             chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
 
 
+JPEG_SAMPLE = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCABAAEADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDkqKKK+lPCCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAP//Z'
+
+
 def request(url, path, payload=None, origin=None, raw_body=None):
     headers = {'Origin': origin or url}
     data = None
@@ -47,10 +51,19 @@ def request(url, path, payload=None, origin=None, raw_body=None):
         return error.code, error.headers, error.read()
 
 
-def verify(url):
+def source_version():
+    path = Path(__file__).resolve().parents[1] / 'sku-kit' / '_version.py'
+    for statement in ast.parse(path.read_text(encoding='utf-8')).body:
+        if isinstance(statement, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'VERSION' for t in statement.targets):
+            return ast.literal_eval(statement.value)
+    raise ValueError('Missing source version')
+
+
+def verify(url, expected_version=None):
+    expected_version = expected_version or source_version()
     status, _, data = request(url, '/api/health')
     health = json.loads(data)
-    if (status != 200 or health.get('version') != '0.4.0' or health.get('status') != 'ok'
+    if (status != 200 or health.get('version') != expected_version or health.get('status') != 'ok'
             or health.get('storage') != 'memory' or health.get('model_api_required') is not False):
         raise AssertionError('Unexpected health response: %s' % health)
     for path, marker in (('/', b'<html'), ('/app.mjs', b'import'), ('/style.css', b'{'),
@@ -58,23 +71,23 @@ def verify(url):
         status, _, data = request(url, path)
         if status != 200 or marker not in data:
             raise AssertionError('Bundled UI asset missing: %s (%s)' % (path, status))
-    table = 'SKU,name\n001,测试商品一\n002,测试商品二\n'.encode('utf-8-sig')
-    images = {'001.png': png(15, 130, 80), '002.png': png(140, 40, 20)}
+    table = 'SKU,name\n001,测试商品一\n002,测试商品二\n003,JPEG商品\n'.encode('utf-8-sig')
+    images = {'001.png': png(15, 130, 80), '002.png': png(140, 40, 20), '003.jpg': base64.b64decode(JPEG_SAMPLE)}
     payload = {'table': {'name': 'products.csv', 'content': base64.b64encode(table).decode('ascii')},
                'images': [{'name': name, 'content': base64.b64encode(data).decode('ascii')}
                           for name, data in images.items()], 'options': {}}
     status, _, data = request(url, '/api/inspect', {'table': payload['table']})
     preview = json.loads(data)
     if (status != 200 or preview.get('headers') != ['SKU', 'name']
-            or preview.get('sku_candidates') != ['SKU'] or preview.get('row_count') != 2
-            or preview.get('preview') != [['001', '测试商品一'], ['002', '测试商品二']]):
+            or preview.get('sku_candidates') != ['SKU'] or preview.get('row_count') != 3
+            or preview.get('preview') != [['001', '测试商品一'], ['002', '测试商品二'], ['003', 'JPEG商品']]):
         raise AssertionError('Table inspection failed: %s' % preview)
     status, _, data = request(url, '/api/check', payload)
     report = json.loads(data)
     if status != 200 or report['summary']['errors'] != 0:
         raise AssertionError('Valid check failed: %s' % report)
-    if {item['sku'] for item in report['images']} != {'001', '002'}:
-        raise AssertionError('Both input images must match their SKUs')
+    if {item['sku'] for item in report['images']} != {'001', '002', '003'}:
+        raise AssertionError('All PNG and JPEG inputs must match their SKUs')
     status, headers, data = request(url, '/api/pack', payload)
     if status != 200 or not headers['Content-Type'].startswith('application/zip'):
         raise AssertionError('Valid pack failed: %s %r' % (status, data[:500]))
@@ -116,6 +129,7 @@ def verify(url):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--expected-version', default=None)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--executable', type=Path, help='The built SKU-Kit executable')
     group.add_argument('--source', type=Path, help='desktop.py, for source-only smoke checking')
@@ -163,8 +177,8 @@ def main():
                 time.sleep(0.1)
             if not url:
                 raise RuntimeError('Desktop startup timed out:\n' + log_path.read_text(errors='replace'))
-            verify(url)
-            print('PASS: v0.4 health, packaged UI, table inspection, exact SKU matching, original ZIP bytes, '
+            verify(url, expected_version=args.expected_version)
+            print('PASS: versioned health, packaged UI, table inspection, exact SKU matching, original ZIP bytes, '
                   'package verification and tamper rejection, missing-image blocking, origin guard.')
         except Exception:
             print(log_path.read_text(encoding='utf-8', errors='replace'), file=sys.stderr)

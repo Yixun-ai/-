@@ -1,0 +1,14 @@
+include README.en.md CHANGELOG.md CONTRIBUTING.md SUPPORT.md SECURITY.md CODE_OF_CONDUCT.md
+include .editorconfig .gitattributes .gitignore
+include sku-kit/requirements.txt sku-kit/README.md sku-kit/API.md sku-kit/验证记录.md
+recursive-include docs *.md *.png
+recursive-include scripts *.py
+recursive-include .github *.yml *.md
+recursive-include sku-kit/skills *.md
+recursive-include sku-kit/tests *.py *.mjs
+recursive-include sku-kit/static *.html *.css *.mjs
+global-exclude *.py[cod] .DS_Store *.zip *.sku-kit.json
+prune build
+prune dist
+prune build-desktop
+prune demo-data

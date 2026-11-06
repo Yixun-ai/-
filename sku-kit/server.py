@@ -10,9 +10,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 MAX_UPLOAD = 70 * 1024 * 1024
-from table_io import parse_table, inspect_table
-from engine import VERSION, analyze, package, checklist
-from verify import verify_package
+if __package__:
+    from .table_io import parse_table, inspect_table
+    from .engine import VERSION, analyze, package, checklist
+    from .verify import verify_package
+else:
+    from table_io import parse_table, inspect_table
+    from engine import VERSION, analyze, package, checklist
+    from verify import verify_package
 import base64
 
 

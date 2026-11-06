@@ -10,9 +10,12 @@ import zipfile
 from pathlib import PurePosixPath
 from PIL import Image, UnidentifiedImageError
 
-from table_io import parse_table, SKU_ALIASES
-
-VERSION = '0.4.0'
+if __package__:
+    from .table_io import parse_table, SKU_ALIASES
+    from ._version import VERSION
+else:
+    from table_io import parse_table, SKU_ALIASES
+    from _version import VERSION
 EXTENSIONS = {'.png': 'PNG', '.jpg': 'JPEG', '.jpeg': 'JPEG', '.webp': 'WEBP',
               '.gif': 'GIF', '.bmp': 'BMP', '.avif': 'AVIF'}
 MAX_TOTAL = 240 * 1024 * 1024

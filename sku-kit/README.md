@@ -4,7 +4,7 @@
 
 ## 启动
 
-Python 3.9+，免费依赖 Pillow。从仓库根目录先运行 `cd sku-kit`，确认当前目录包含 `server.py`，再在虚拟环境安装：
+源码 0.5 起需要 Python 3.11+，免费依赖 Pillow 13。普通用户可以下载不需要安装 Python 的[桌面预览版](https://github.com/Yixun-ai/-/releases)。从仓库根目录可先安装 `python3 -m pip install .`，然后运行 `sku-kit`；下面继续保留直接脚本启动方式，先 `cd sku-kit`，确认当前目录包含 `server.py`，再在虚拟环境安装：
 
 ```sh
 python3 -m venv .venv

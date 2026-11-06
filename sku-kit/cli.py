@@ -6,9 +6,14 @@ import os
 import sys
 from pathlib import Path
 
-from engine import VERSION, MAX_TOTAL, analyze, package, checklist
-from table_io import MAX_TABLE
-from verify import verify_package
+if __package__:
+    from .engine import VERSION, MAX_TOTAL, analyze, package, checklist
+    from .table_io import MAX_TABLE
+    from .verify import verify_package
+else:
+    from engine import VERSION, MAX_TOTAL, analyze, package, checklist
+    from table_io import MAX_TABLE
+    from verify import verify_package
 
 
 def load_inputs(table_path, images_path):

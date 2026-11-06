@@ -1,4 +1,4 @@
-# SKU Kit 0.4 接口
+# SKU Kit 0.5 接口
 
 ## HTTP
 
@@ -50,7 +50,7 @@ POST `/api/verify`，Content-Type 为 application/zip，Body 直接为 ZIP 原�
 
 ## 标准结果
 
-schema_version=1.1，engine_version=0.4.0。
+schema_version=1.1，engine_version=0.5.0。包与应用版本统一由 `_version.py` 定义。
 包含 summary（products、images、matched_images、errors、warnings）、rules、table_sha256、context_sha256、products、images、issues、assignments、limits。
 products 每项包括 row（原表行号）、sku、name。
 images 每项包括 source、sha256、size、sku、candidates、valid、width、height、assignment_source（filename / manual）。
@@ -77,6 +77,8 @@ sku=null 表示明确暂不归类，保留未匹配提醒；删除该项则恢�
 报告和交付包清单保留人工确认。不要让模型猜测归属或虚构哈希。
 
 ## CLI / MCP
+
+在 Python 3.11+ 虚拟环境从仓库根目录执行 `python -m pip install .` 后，有三个入口：`sku-kit` 启动本机网页；`sku-kit-cli` 运行 JSON 命令；`sku-kit-mcp --root /data` 运行 stdio MCP。`python -m sku_kit` 也可启动网页。项目尚未发布到 PyPI。源码目录里的 `python3 cli.py ...`、`python3 server.py` 和 `python3 mcp_server.py ...` 保留兼容。
 
 CLI 的 --assignments-file 指向上述 JSON，--duplicate-policy 控制重复记录。checklist 子命令可导出 CSV。
 `python3 cli.py verify --package /data/delivery.zip` 可独立核验已有交付包，不需要原始文件；CLI 压缩及展开大小上限各 320 MB、最多 5,006 个文件。退出码 0=核验通过，2=核验未通过，1=输入/读取失败。stdout 使用 UTF-8 JSON。

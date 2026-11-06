@@ -1,0 +1,58 @@
+name: 缺陷报告 / Bug report
+description: 描述可以复现的错误；不要上传客户资料或安全漏洞细节。
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先搜索已有问题，并阅读 SUPPORT.md。安全漏洞请按 SECURITY.md 报告。
+        公开内容只用合成或脱敏资料，不要上传客户表、原图、进度文件、交付包或密钥。
+        Chinese and English reports are welcome. Use synthetic or sanitized data only.
+  - type: input
+    id: version
+    attributes:
+      label: 版本与安装来源 / Version and installation
+      description: 桌面包名和 Release，或源码提交号、安装命令。
+      placeholder: "0.5.0 / SKU-Kit-windows-amd64.zip / Release ..."
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 运行环境 / Environment
+      description: 系统版本、CPU 架构、浏览器；源码版另附 Python 版本。AI 接入请注明宿主与版本。
+      placeholder: "Windows / x64 / Edge ..."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      description: 从启动开始描述，包含表头、匹配规则、文件名等必要条件，可用虚构编号。
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: 期望与实际结果 / Expected and actual result
+      description: 说明应该发生什么、实际发生什么，以及影响了哪一步。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 错误信息或合成复现 / Error or synthetic reproduction
+      description: 可选。移除用户名、业务路径与敏感内容；截图和日志发布前再次检查。
+    validations:
+      required: false
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 提交前确认 / Before submitting
+      options:
+        - label: 我已搜索已有问题，且本报告不含客户资料、密钥或漏洞利用细节。 / I checked existing issues and removed sensitive data and exploit details.
+          required: true
